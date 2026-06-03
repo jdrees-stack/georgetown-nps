@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Georgetown NPS Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f4f5f7; color: #1a1a2e; }
+  header { background: #1a1a2e; color: white; padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 20px; font-weight: 600; }
+  header span { font-size: 13px; opacity: 0.6; }
+  .tabs { display: flex; background: #fff; border-bottom: 2px solid #e5e7eb; padding: 0 32px; }
+  .tab { padding: 14px 20px; font-size: 14px; font-weight: 500; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: #6b7280; transition: all 0.15s; white-space: nowrap; }
+  .tab.active { border-bottom-color: #c0392b; color: #c0392b; }
+  .tab:hover:not(.active) { color: #374151; }
+  .page { display: none; padding: 28px 32px; }
+  .page.active { display: block; }
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .section-header h2 { font-size: 17px; font-weight: 600; }
+  .btn { background: #c0392b; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; }
+  .btn:hover { background: #a93226; }
+  .btn.secondary { background: #f3f4f6; color: #374151; border: 1px solid #e5e7eb; }
+  .btn.secondary:hover { background: #e5e7eb; }
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .kpi { background: white; border-radius: 10px; padding: 20px; border: 1px solid #e5e7eb; }
+  .kpi .label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .kpi .value { font-size: 32px; font-weight: 700; }
+  .kpi .delta { font-size: 12px; margin-top: 4px; }
+  .kpi .delta.up { color: #16a34a; }
+  .kpi .delta.down { color: #c0392b; }
+  .kpi .delta.neutral { color: #6b7280; }
+  .kpi.highlight { border-left: 4px solid #c0392b; }
+  .card { background: white; border-radius: 10px; border: 1px solid #e5e7eb; padding: 24px; margin-bottom: 20px; }
+  .card h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: #374151; }
+  .chart-wrap { position: relative; height: 260px; }
+  .entry-form { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .entry-form label { font-size: 12px; color: #6b7280; display: block; margin-bottom: 4px; }
+  .entry-form input { border: 1px solid #d1d5db; border-radius: 6px; padding: 7px 10px; font-size: 13px; }
+  .detail-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .detail-table th { text-align: left; padding: 8px 12px; background: #f9fafb; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #e5e7eb; }
+  .detail-table td { padding: 10px 12px; border-bottom: 1px solid #f3f4f6; }
+  .detail-table tr:last-child td { border-bottom: none; }
+  .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; margin-left: 8px; }
+  .log-list { display: flex; flex-direction: column; gap: 12px; }
+  .log-entry { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
+  .log-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+  .log-date { font-size: 12px; color: #6b7280; }
+  .log-type { font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; display: inline-block; margin-top: 4px; }
+  .log-type.guest-review { background: #fee2e2; color: #b91c1c; }
+  .log-type.staff-flag { background: #fef3c7; color: #92400e; }
+  .log-note { font-size: 13px; color: #374151; line-height: 1.5; }
+  .log-score-badge { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 20px; margin-left: 6px; }
+  .log-score-badge.detractor { background: #fee2e2; color: #b91c1c; }
+  .log-score-badge.passive { background: #fef3c7; color: #92400e; }
+  .log-score-badge.staff-flag { background: #fef3c7; color: #92400e; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; padding: 10px 0; }
+  .checkbox-row input[type=checkbox] { width: 16px; height: 16px; accent-color: #c0392b; cursor: pointer; }
+  .checkbox-row label { font-size: 13px; color: #374151; cursor: pointer; font-weight: 500; }
+  .sentiment-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  .sentiment-theme { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; cursor: pointer; transition: border-color 0.15s; }
+  .sentiment-theme:hover { border-color: #c0392b; }
+  .sentiment-theme.active-filter { border-color: #c0392b; box-shadow: 0 0 0 2px rgba(192,57,43,0.15); }
+  .sentiment-theme .theme-name { font-size: 13px; font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .sentiment-theme .count { font-size: 22px; font-weight: 700; }
+  .sentiment-theme .sbar { height: 6px; background: #e5e7eb; border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .sentiment-theme .sbar-fill { height: 100%; border-radius: 3px; background: #c0392b; }
+  .review-list { display: flex; flex-direction: column; gap: 10px; }
+  .review-entry { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 14px; }
+  .review-header { display: flex; justify-content: space-between; margin-bottom: 6px; flex-wrap: wrap; gap: 6px; }
+  .review-score { font-size: 12px; font-weight: 600; }
+  .review-score.detractor { color: #c0392b; }
+  .review-score.passive { color: #d97706; }
+  .review-text { font-size: 13px; color: #374151; line-height: 1.5; font-style: italic; }
+  .review-theme-tag { font-size: 11px; padding: 2px 7px; border-radius: 20px; background: #fee2e2; color: #b91c1c; }
+  .review-filter { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .insight-banner { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px; padding: 14px 16px; font-size: 13px; color: #78350f; margin-bottom: 20px; line-height: 1.6; }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: white; border-radius: 12px; padding: 28px; width: 480px; max-width: 95vw; }
+  .modal h3 { font-size: 16px; font-weight: 600; margin-bottom: 20px; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 12px; color: #6b7280; margin-bottom: 5px; font-weight: 500; }
+  .form-group input, .form-group textarea, .form-group select { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit; }
+  .form-group textarea { resize: vertical; min-height: 80px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+  #loading-overlay { display: flex; position: fixed; inset: 0; background: rgba(255,255,255,0.85); z-index: 200; align-items: center; justify-content: center; flex-direction: column; gap: 16px; }
+  .spinner { width: 36px; height: 36px; border: 3px solid #e5e7eb; border-top-color: #c0392b; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 700px) {
+    .kpi-row { grid-template-columns: 1fr 1fr; }
+    .sentiment-grid { grid-template-columns: 1fr 1fr; }
+    .tabs { overflow-x: auto; padding: 0 16px; }
+    .page { padding: 20px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div style="font-size:14px;color:#6b7280;font-weight:500">Loading dashboard…</div>
+</div>
+
+<header>
+  <h1>Georgetown (GBGS) — NPS Dashboard</h1>
+  <span>Jan–May 2026 · 320 responses loaded</span>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="showTab('nps',this)">📈 NPS Trend</div>
+  <div class="tab" onclick="showTab('coaching',this)">🎯 Coaching Log</div>
+  <div class="tab" onclick="showTab('reviews',this)">💬 Review Tracker</div>
+</div>
+
+<!-- NPS -->
+<div class="page active" id="tab-nps">
+  <div class="kpi-row">
+    <div class="kpi highlight">
+      <div class="label">May NPS (Latest)</div>
+      <div class="value" id="kpi-current">+80</div>
+      <div class="delta down" id="kpi-delta">▼ −6 vs April</div>
+    </div>
+    <div class="kpi">
+      <div class="label">YTD NPS</div>
+      <div class="value">+81</div>
+      <div class="delta neutral">320 responses</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Target NPS</div>
+      <div class="value" id="kpi-target">—</div>
+      <div class="delta neutral" id="kpi-target-sub">Set below</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Gap to Target</div>
+      <div class="value" id="kpi-gap">—</div>
+      <div class="delta neutral">points needed</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Monthly NPS — Georgetown 2026</h3>
+    <div class="chart-wrap"><canvas id="npsChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h3>Monthly Breakdown</h3>
+    <table class="detail-table">
+      <thead><tr><th>Month</th><th>NPS</th><th>Promoters</th><th>Neutrals</th><th>Detractors</th><th>Responses</th></tr></thead>
+      <tbody id="breakdown-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- COACHING -->
+<div class="page" id="tab-coaching">
+  <div class="section-header">
+    <h2>Host Coaching Log</h2>
+  </div>
+  <div class="card" id="host-scoreboard" style="margin-bottom:20px"></div>
+  <div style="font-size:13px;color:#6b7280;margin-bottom:16px;">Entries are created automatically when a detractor (0–6), neutral (7–8), or staff flag is added from the Review Tracker. Check <strong>Coached</strong> once the conversation has happened.</div>
+  <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;">
+    <button class="btn secondary" id="cf-all" onclick="setCoachFilter('all',this)" style="background:#1a1a2e;color:white">All</button>
+    <button class="btn secondary" id="cf-pending" onclick="setCoachFilter('pending',this)">Needs Coaching</button>
+    <button class="btn secondary" id="cf-done" onclick="setCoachFilter('done',this)">Coached ✓</button>
+    <button class="btn secondary" id="cf-skip" onclick="setCoachFilter('skip',this)">No Coaching Needed</button>
+  </div>
+  <div class="log-list" id="log-list"></div>
+</div>
+
+<!-- REVIEWS -->
+<div class="page" id="tab-reviews">
+  <div class="section-header">
+    <h2>Review Sentiment Tracker</h2>
+    <button class="btn" onclick="openModal('review-modal')">+ Add Review</button>
+  </div>
+  <div class="insight-banner" id="insight-banner"></div>
+  <div class="sentiment-grid" id="sentiment-themes"></div>
+  <div class="card">
+    <h3>Detractors &amp; Passives</h3>
+    <div class="review-filter" id="review-filter-bar"></div>
+    <div class="review-list" id="review-list"></div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal-overlay" id="review-modal">
+  <div class="modal">
+    <h3>Add Review / Verbatim</h3>
+    <div class="form-group"><label>Date</label><input type="date" id="rv-date"></div>
+    <div style="display:flex;gap:10px">
+      <div class="form-group" style="flex:1"><label>Guest Score (0–10)</label><input type="number" id="rv-score" min="0" max="10" placeholder="e.g. 4"></div>
+      <div class="form-group" style="flex:1"><label>Host Name</label><input type="text" id="rv-host" placeholder="e.g. Cooper"></div>
+    </div>
+    <div class="form-group"><label>Theme</label><select id="rv-theme"><option>Value / Pricing</option><option>Game Issues</option><option>Team</option><option>Lobby Experience</option><option>Highlight Reel / Video</option><option>Other</option><option>No Issues</option></select></div>
+    <div class="form-group"><label>Verbatim Quote</label><textarea id="rv-text" placeholder="Paste or type what the guest said..."></textarea></div>
+    <div class="checkbox-row" id="staff-flag-row">
+      <input type="checkbox" id="rv-staff-flag">
+      <label for="rv-staff-flag">⚑ Flag negative staff mention (even if score is 9–10)</label>
+    </div>
+    <div style="font-size:11px;color:#9ca3af;margin-top:-8px;margin-bottom:10px;padding-left:24px">Check this if the feedback criticizes a specific team member, regardless of score.</div>
+    <div class="modal-actions"><button class="btn secondary" onclick="closeModal('review-modal')">Cancel</button><button class="btn" onclick="saveReview()">Save</button></div>
+  </div>
+</div>
+
+<script>
+// ─── Supabase setup ───────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://yufizzwtyqgtpkmviruy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_6EObkQFyIsd895IIZLRJRA_QWM9CVtK';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ─── In-memory state ──────────────────────────────────────────────────────────
+let state = { npsEntries: [], coachingLog: [], reviews: [], target: 88 };
+let npsChart = null;
+let coachFilter = 'all';
+let reviewFilter = 'All';
+
+// ─── Seed data ────────────────────────────────────────────────────────────────
+const SEED_NPS = [
+  {date:"2026-01-31",score:68,label:"Jan 2026",promoters:17,neutrals:3,detractors:2,total:22},
+  {date:"2026-02-28",score:79,label:"Feb 2026",promoters:64,neutrals:10,detractors:3,total:77},
+  {date:"2026-03-31",score:84,label:"Mar 2026",promoters:75,neutrals:6,detractors:4,total:85},
+  {date:"2026-04-30",score:86,label:"Apr 2026",promoters:68,neutrals:7,detractors:2,total:77},
+  {date:"2026-05-31",score:80,label:"May 2026",promoters:51,neutrals:4,detractors:4,total:59,note:"Leonard was launching Hanover"}
+];
+const SEED_REVIEWS = [
+  {date:"2026-01-24",score:7,theme:"Team",text:"Don't cheat for people birthdays"},
+  {date:"2026-01-25",score:7,theme:"No Issues",text:"Had a great time. The escape room was challenging and the game show was a lot of fun."},
+  {date:"2026-01-31",score:6,theme:"Value / Pricing",text:"It was fun but not enough time to be worth the $40 per person"},
+  {date:"2026-02-08",score:8,theme:"Highlight Reel / Video",text:"Great experience. Received the wrong video highlight of other people. Would be great to get the video of my group."},
+  {date:"2026-02-15",score:0,theme:"Highlight Reel / Video",text:"Games were fun but not worth $40pp for one hour. Very dark and small room, highlight reel sucked"},
+  {date:"2026-02-22",score:2,theme:"Game Issues",text:"We were unaware that our team would be split up in such an uneven way. One of our teammates was on a team by herself while the rest of us were all on the same team."},
+  {date:"2026-03-16",score:8,theme:"Team",text:"We didn't know we would get to pick some of the games we played, and didn't pay attention to the menu when we arrived. A more direct mention of that would be great!"},
+  {date:"2026-03-18",score:6,theme:"Team",text:"There seems to have been a disconnect. Upon signing up, I noted the age of the children. I was told they'd note our reservation to exclude trivia, but that didn't happen."},
+  {date:"2026-03-20",score:6,theme:"Other",text:"We had fun but I got injured during the tower building. They paused the game for a minute so I could get a band aid but that was about it."},
+  {date:"2026-03-28",score:3,theme:"Other",text:"It was cute, but no frills."},
+  {date:"2026-04-02",score:7,theme:"Team",text:"The experience was nice. The host was upbeat. A little more light would've been helpful. Also, more time for explaining the games would be helpful."},
+  {date:"2026-04-12",score:8,theme:"Team",text:"I came for my birthday and was told that the birthday person is free but I paid for myself and was told I'd be refunded but I was not."},
+  {date:"2026-04-13",score:8,theme:"Game Issues",text:"Fun host! He tried to play fake favorites for the other team and that was fun, it made us more competitive! I do wish the video for the computer host was louder."},
+  {date:"2026-04-18",score:4,theme:"Game Issues",text:"Timing game was tough"},
+  {date:"2026-05-02",score:6,theme:"No Issues",text:"We had a great time and my team won"},
+  {date:"2026-05-23",score:4,theme:"No Issues",text:"Anvi really was a good moderator. She really made the games fun!"},
+  {date:"2026-05-31",score:8,theme:"Game Issues",text:"We arrived on time but had to wait for the other family. Way too many people in the room — should be limited to 10 max. Too much trivia; would have preferred a better mix. Host was great though."}
+];
+
+// ─── DB mapping helpers ───────────────────────────────────────────────────────
+function mapNPS(rows) {
+  return rows.map(r => ({ id: r.id, date: r.date, score: r.score, label: r.label, promoters: r.promoters, neutrals: r.neutrals, detractors: r.detractors, total: r.total, note: r.note }));
+}
+function mapReviews(rows) {
+  return rows.map(r => ({ id: r.id, date: r.date, score: r.score, theme: r.theme, text: r.text, host: r.host, staffFlag: r.staff_flag, noCoaching: r.no_coaching }));
+}
+function mapCoaching(rows) {
+  return rows.map(r => ({ id: r.id, date: r.date, score: r.score, gm: r.gm, type: r.type, notes: r.text, coached: r.coached, noCoaching: r.no_coaching, fromReview: r.from_review, reviewId: r.review_id }));
+}
+
+// ─── Seed if DB is empty ──────────────────────────────────────────────────────
+async function seedIfEmpty() {
+  const { data } = await sb.from('nps_entries').select('id').limit(1);
+  if (data && data.length > 0) return; // already seeded
+
+  await sb.from('nps_entries').insert(SEED_NPS.map(e => ({
+    date: e.date, score: e.score, label: e.label,
+    promoters: e.promoters, neutrals: e.neutrals,
+    detractors: e.detractors, total: e.total, note: e.note || null
+  })));
+
+  await sb.from('reviews').insert(SEED_REVIEWS.map(r => ({
+    date: r.date, score: r.score, theme: r.theme, text: r.text,
+    host: null, staff_flag: false, no_coaching: false
+  })));
+
+  const coachInserts = SEED_REVIEWS.filter(r => r.score <= 8).map(r => {
+    const scoreLabel = r.score <= 6 ? 'Detractor' : 'Neutral';
+    return {
+      date: r.date, score: r.score, gm: 'Unknown host', type: 'guest-review',
+      text: `Guest score: ${r.score} (${scoreLabel}). Feedback: "${r.text.slice(0,160)}${r.text.length>160?'…':''}"`,
+      coached: false, no_coaching: false, from_review: true
+    };
+  });
+  await sb.from('coaching_log').insert(coachInserts);
+  await sb.from('settings').upsert({ key: 'target', value: '88' });
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+async function init() {
+  document.getElementById('loading-overlay').style.display = 'flex';
+  try {
+    await seedIfEmpty();
+    const [npsRes, reviewsRes, coachRes, settingsRes] = await Promise.all([
+      sb.from('nps_entries').select('*').order('date'),
+      sb.from('reviews').select('*').order('date'),
+      sb.from('coaching_log').select('*').order('date'),
+      sb.from('settings').select('*')
+    ]);
+    if (npsRes.error) throw npsRes.error;
+    state.npsEntries = mapNPS(npsRes.data || []);
+    state.reviews = mapReviews(reviewsRes.data || []);
+    state.coachingLog = mapCoaching(coachRes.data || []);
+    const tSetting = (settingsRes.data || []).find(s => s.key === 'target');
+    state.target = tSetting ? parseInt(tSetting.value) : 88;
+  } catch(err) {
+    console.error(err);
+    document.getElementById('loading-overlay').innerHTML = `
+      <div style="background:white;padding:32px;border-radius:12px;text-align:center;max-width:400px">
+        <div style="font-size:28px;margin-bottom:12px">⚠️</div>
+        <div style="color:#c0392b;font-size:15px;font-weight:600;margin-bottom:8px">Connection Error</div>
+        <div style="color:#6b7280;font-size:13px;line-height:1.6">${err.message}<br><br>Make sure RLS is disabled on all tables in Supabase.</div>
+      </div>`;
+    return;
+  }
+  document.getElementById('loading-overlay').style.display = 'none';
+  renderNPS();
+}
+
+// ─── Tab navigation ───────────────────────────────────────────────────────────
+function showTab(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  el.classList.add('active');
+  if (name==='nps') renderNPS();
+  if (name==='coaching') renderCoaching();
+  if (name==='reviews') renderReviews();
+}
+
+// ─── NPS Trend ────────────────────────────────────────────────────────────────
+function renderNPS() {
+  const entries = state.npsEntries;
+  const labels = entries.map(e => e.label || fmtDate(e.date));
+  const scores = entries.map(e => e.score);
+  if (entries.length > 0) {
+    const latest = scores[scores.length-1];
+    document.getElementById('kpi-current').textContent = (latest>=0?'+':'')+latest;
+    if (entries.length > 1) {
+      const diff = latest - scores[scores.length-2];
+      const el = document.getElementById('kpi-delta');
+      el.textContent = (diff>=0?'▲ +':'▼ ')+diff+' vs prev month';
+      el.className = 'delta '+(diff>=0?'up':'down');
+    }
+    if (state.target !== null) {
+      document.getElementById('kpi-target').textContent = (state.target>=0?'+':'')+state.target;
+      document.getElementById('kpi-target-sub').textContent = '60-day goal';
+      const gap = state.target - latest;
+      document.getElementById('kpi-gap').textContent = (gap>0?'+':'')+gap;
+    }
+  }
+  const tbody = document.getElementById('breakdown-tbody');
+  tbody.innerHTML = [...entries].reverse().map(e => {
+    const c = e.score>=80?'#16a34a':e.score>=60?'#d97706':'#c0392b';
+    const noteBit = e.note ? `<br><span style="font-size:11px;color:#6b7280;font-style:italic">📝 ${e.note}</span>` : '';
+    return `<tr><td>${e.label||fmtDate(e.date)}${noteBit}</td><td style="font-weight:700;color:${c}">${e.score>=0?'+':''}${e.score}</td><td style="color:#16a34a">${e.promoters??'—'}</td><td style="color:#d97706;font-weight:600">${e.neutrals??'—'}</td><td style="color:#c0392b">${e.detractors??'—'}</td><td style="color:#6b7280">${e.total??'—'}</td></tr>`;
+  }).join('');
+  const ctx = document.getElementById('npsChart').getContext('2d');
+  if (npsChart) npsChart.destroy();
+  npsChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [
+      {label:'NPS Score',data:scores,borderColor:'#c0392b',backgroundColor:'rgba(192,57,43,0.07)',borderWidth:2.5,pointRadius:6,pointBackgroundColor:'#c0392b',tension:0.3,fill:true},
+      ...(state.target!==null?[{label:'Target ('+state.target+')',data:labels.map(()=>state.target),borderColor:'#16a34a',borderWidth:1.5,borderDash:[6,4],pointRadius:0,fill:false}]:[])
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{font:{size:12}}}},scales:{y:{min:50,max:100,grid:{color:'#f3f4f6'},ticks:{font:{size:11}}},x:{grid:{display:false},ticks:{font:{size:11}}}}}
+  });
+}
+
+// ─── Coaching Log ─────────────────────────────────────────────────────────────
+function setCoachFilter(f, btn) {
+  coachFilter = f;
+  document.querySelectorAll('[id^=cf-]').forEach(b => { b.style.background=''; b.style.color=''; });
+  btn.style.background='#1a1a2e'; btn.style.color='white';
+  renderCoaching();
+}
+
+function renderScoreboard() {
+  const board = document.getElementById('host-scoreboard');
+  const tally = {};
+  state.coachingLog.forEach(e => {
+    const name = (e.gm || '').trim() || 'Unknown';
+    if (!tally[name]) tally[name] = { total: 0, coached: 0 };
+    tally[name].total++;
+    if (e.coached) tally[name].coached++;
+  });
+  const hosts = Object.entries(tally).sort((a, b) => b[1].total - a[1].total);
+  board.style.display = '';
+  if (!hosts.length) { board.innerHTML = '<h3>Host Detractor Scoreboard</h3><div style="color:#9ca3af;font-size:13px;margin-top:12px">No entries yet.</div>'; return; }
+  const max = hosts[0][1].total;
+  board.innerHTML = `
+    <h3 style="margin-bottom:16px">Host Detractor Scoreboard</h3>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      ${hosts.map(([name, data], i) => {
+        const pct = Math.round((data.total / max) * 100);
+        const remaining = data.total - data.coached;
+        const barColor = remaining === 0 ? '#16a34a' : i === 0 ? '#c0392b' : '#d97706';
+        return `<div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+            <span style="font-size:13px;font-weight:600">${name}</span>
+            <span style="display:flex;gap:10px;align-items:center">
+              <span style="font-size:12px;color:#6b7280">${data.coached} coached</span>
+              <span style="font-size:13px;font-weight:700;color:${barColor}">${data.total} detractor${data.total!==1?'s':''}</span>
+            </span>
+          </div>
+          <div style="height:8px;background:#f3f4f6;border-radius:4px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px;transition:width 0.4s"></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function renderCoaching() {
+  renderScoreboard();
+  const list = document.getElementById('log-list');
+  let entries = [...state.coachingLog].reverse();
+  if (coachFilter==='pending') entries = entries.filter(e=>!e.coached && !e.noCoaching);
+  if (coachFilter==='done') entries = entries.filter(e=>e.coached);
+  if (coachFilter==='skip') entries = entries.filter(e=>e.noCoaching);
+  if (!entries.length) {
+    const msgs = {pending:'All hosts have been coached — great work.', done:'No coached entries yet.', skip:'No entries marked as no coaching needed.', all:'No entries yet.'};
+    list.innerHTML=`<div style="color:#9ca3af;font-size:13px;text-align:center;padding:40px 0">${msgs[coachFilter]||msgs.all}</div>`;
+    return;
+  }
+  const typeLabels = {'guest-review':'Guest Review','staff-flag':'Staff Flag'};
+  list.innerHTML = entries.map(e => {
+    let scoreBadge = '';
+    if (e.fromReview && e.score != null) {
+      const badgeClass = e.score<=6?'detractor':e.score<=8?'passive':'staff-flag';
+      const badgeLabel = e.score<=6?`Score ${e.score} · Detractor`:e.score<=8?`Score ${e.score} · Neutral`:`Score ${e.score} · Staff Flag`;
+      scoreBadge = `<span class="log-score-badge ${badgeClass}">${badgeLabel}</span>`;
+    }
+    const eid = e.id;
+    const hostDisplay = e.gm && e.gm !== 'Unknown host'
+      ? `<span style="font-weight:700;font-size:14px">${e.gm}</span>
+         <button onclick="editHostName('${eid}')" title="Edit name" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:13px;padding:0 4px;line-height:1" onmouseover="this.style.color='#374151'" onmouseout="this.style.color='#9ca3af'">✏️</button>
+         ${scoreBadge}`
+      : `<input id="host-input-${eid}" type="text" value="${(e.gm==='Unknown host'||!e.gm)?'':e.gm}" placeholder="Enter host name" onchange="updateHostName('${eid}',this.value)" style="border:1px solid #d1d5db;border-radius:5px;padding:4px 8px;font-size:13px;width:160px">${scoreBadge}`;
+    return `<div class="log-entry" style="${e.coached?'opacity:0.6;':''}">
+      <div class="log-header">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:8px">${hostDisplay}</div>
+          <span class="log-type ${e.type}">${typeLabels[e.type]||e.type}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+          <div class="log-date">${fmtDate(e.date)}</div>
+          ${e.noCoaching
+            ? `<span style="font-size:12px;font-weight:500;color:#6b7280;font-style:italic">No Coaching Needed <button onclick="toggleNoCoaching('${eid}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:11px;padding:0 2px" title="Undo">↩</button></span>`
+            : `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;font-weight:500;color:${e.coached?'#16a34a':'#374151'}">
+                <input type="checkbox" ${e.coached?'checked':''} onchange="toggleCoached('${eid}')" style="accent-color:#16a34a;width:15px;height:15px">
+                ${e.coached ? 'Coached ✓' : 'Mark as Coached'}
+              </label>
+              <button onclick="toggleNoCoaching('${eid}')" style="background:none;border:1px solid #e5e7eb;border-radius:5px;padding:3px 8px;font-size:11px;color:#6b7280;cursor:pointer">No Coaching Needed</button>`
+          }
+        </div>
+      </div>
+      <div class="log-note" style="margin-top:8px">${e.notes}</div>
+    </div>`;
+  }).join('');
+}
+
+async function toggleCoached(id) {
+  const entry = state.coachingLog.find(e => e.id === id);
+  if (!entry) return;
+  entry.coached = !entry.coached;
+  renderCoaching();
+  await sb.from('coaching_log').update({ coached: entry.coached }).eq('id', id);
+}
+
+async function toggleNoCoaching(id) {
+  const entry = state.coachingLog.find(e => e.id === id);
+  if (!entry) return;
+  entry.noCoaching = !entry.noCoaching;
+  if (entry.noCoaching) entry.coached = false;
+  renderCoaching();
+  await sb.from('coaching_log').update({ no_coaching: entry.noCoaching, coached: entry.coached }).eq('id', id);
+}
+
+async function editHostName(id) {
+  const entry = state.coachingLog.find(e => e.id === id);
+  if (!entry) return;
+  entry.gm = 'Unknown host';
+  renderCoaching();
+  setTimeout(() => { const el = document.getElementById('host-input-'+id); if(el) el.focus(); }, 50);
+}
+
+async function updateHostName(id, name) {
+  const entry = state.coachingLog.find(e => e.id === id);
+  if (!entry) return;
+  entry.gm = name.trim();
+  renderCoaching();
+  await sb.from('coaching_log').update({ gm: name.trim() }).eq('id', id);
+}
+
+// ─── Review Tracker ───────────────────────────────────────────────────────────
+const THEMES = ['Value / Pricing','Game Issues','Team','Lobby Experience','Highlight Reel / Video','Other','No Issues'];
+
+function renderReviews() {
+  const total = state.reviews.length;
+  const counts = {};
+  THEMES.forEach(t => counts[t] = state.reviews.filter(r=>r.theme===t).length);
+  const latestEntry = state.npsEntries.length ? state.npsEntries[state.npsEntries.length-1] : null;
+  const cutoff = latestEntry ? new Date(new Date(latestEntry.date+'T00:00:00').getTime() - 60*24*60*60*1000) : null;
+  const recent = cutoff ? state.reviews.filter(r => new Date(r.date+'T00:00:00') >= cutoff && r.theme !== 'No Issues') : [];
+  const recentCounts = {};
+  recent.forEach(r => { recentCounts[r.theme] = (recentCounts[r.theme]||0) + 1; });
+  const recentTop = Object.entries(recentCounts).filter(([t])=>t!=='No Issues').sort((a,b)=>b[1]-a[1]);
+  const noIssuesCount = cutoff ? state.reviews.filter(r => new Date(r.date+'T00:00:00') >= cutoff && r.theme === 'No Issues').length : 0;
+  let assessmentHTML = '';
+  if (recentTop.length) {
+    const focus1 = recentTop[0], focus2 = recentTop[1];
+    assessmentHTML = `<div style="font-size:13px;font-weight:700;margin-bottom:6px">📋 Trailing 60-Day Assessment</div>`
+      + `Based on the last 60 days of feedback, the store should focus on `
+      + `<strong>${focus1[0]}</strong> (${focus1[1]} response${focus1[1]!==1?'s':''})`
+      + (focus2 ? ` and <strong>${focus2[0]}</strong> (${focus2[1]} response${focus2[1]!==1?'s':''})` : '')
+      + `. ${noIssuesCount > 0 ? `${noIssuesCount} response${noIssuesCount!==1?' were':' was'} flagged as no issue. ` : ''}`
+      + `${recentTop.length > 2 ? `Other areas to watch: ${recentTop.slice(2).map(([t,c])=>`${t} (${c})`).join(', ')}.` : ''}`;
+  } else {
+    assessmentHTML = `<div style="font-size:13px;font-weight:700;margin-bottom:6px">📋 Trailing 60-Day Assessment</div>No negative feedback themes in the last 60 days.`;
+  }
+  document.getElementById('insight-banner').innerHTML = assessmentHTML;
+  document.getElementById('sentiment-themes').innerHTML = THEMES.map(t=>{
+    const c=counts[t], pct=total?Math.round(c/total*100):0;
+    const active = reviewFilter===t ? ' active-filter' : '';
+    return `<div class="sentiment-theme${active}" onclick="setReviewFilter('${t}')">
+      <div class="theme-name"><span>${t}</span><span style="color:#6b7280;font-size:12px">${pct}%</span></div>
+      <div class="count">${c}</div>
+      <div class="sbar"><div class="sbar-fill" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+  const allFilters = ['All',...THEMES];
+  document.getElementById('review-filter-bar').innerHTML = allFilters.map(f=>`<button class="btn secondary" onclick="setReviewFilter('${f}')" style="${reviewFilter===f?'background:#1a1a2e;color:white;':''}">${f}</button>`).join('');
+  let reviews = reviewFilter==='All' ? state.reviews : state.reviews.filter(r=>r.theme===reviewFilter);
+  reviews = [...reviews].sort((a,b)=>a.score-b.score);
+  const list = document.getElementById('review-list');
+  if (!reviews.length) { list.innerHTML='<div style="color:#9ca3af;font-size:13px;text-align:center;padding:20px 0">No reviews in this category.</div>'; return; }
+  list.innerHTML = reviews.map(r=>{
+    const type=r.score<=6?'detractor':r.score<=8?'passive':'promoter';
+    const label=r.score<=6?'Detractor':r.score<=8?'Passive':'Promoter';
+    const hostBit = r.host ? `<span style="font-size:12px;color:#6b7280;font-weight:500">Host: ${r.host}</span>` : '';
+    const flagBit = r.staffFlag ? `<span style="font-size:11px;background:#fef3c7;color:#92400e;padding:2px 7px;border-radius:20px;font-weight:500">⚑ Staff flag</span>` : '';
+    return `<div class="review-entry">
+      <div class="review-header">
+        <span class="review-score ${type}">Score: ${r.score} · ${label}</span>
+        <span style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          ${hostBit}${flagBit}
+          <span class="review-theme-tag">${r.theme}</span>
+          <span style="font-size:12px;color:#9ca3af">${fmtDate(r.date)}</span>
+        </span>
+      </div>
+      <div class="review-text">"${r.text}"</div>
+    </div>`;
+  }).join('');
+}
+
+function setReviewFilter(f) { reviewFilter=f; renderReviews(); }
+
+async function saveReview() {
+  const date=document.getElementById('rv-date').value;
+  const score=parseInt(document.getElementById('rv-score').value);
+  const text=document.getElementById('rv-text').value.trim();
+  const host=document.getElementById('rv-host').value.trim();
+  const staffFlag=document.getElementById('rv-staff-flag').checked;
+  const theme=document.getElementById('rv-theme').value;
+  if(!date||isNaN(score)||!text) return alert('Please fill in date, score, and verbatim.');
+
+  const { data: reviewData, error: reviewErr } = await sb.from('reviews').insert({
+    date, score, theme, text, host: host||null, staff_flag: staffFlag, no_coaching: false
+  }).select().single();
+  if (reviewErr) { alert('Error saving: '+reviewErr.message); return; }
+
+  state.reviews.push({ id: reviewData.id, date, score, theme, text, host, staffFlag, noCoaching: false });
+
+  const needsCoaching = score <= 8 || staffFlag;
+  if (needsCoaching) {
+    const logType = (staffFlag && score >= 9) ? 'staff-flag' : 'guest-review';
+    const hostLabel = host || 'Unknown host';
+    const scoreLabel = score<=6?'Detractor':score<=8?'Neutral':'Staff Flag';
+    const noteText = `Guest score: ${score} (${scoreLabel}). Feedback: "${text.slice(0,160)}${text.length>160?'…':''}"`;
+    const { data: coachData, error: coachErr } = await sb.from('coaching_log').insert({
+      date, score, gm: hostLabel, type: logType, text: noteText,
+      coached: false, no_coaching: false, from_review: true, review_id: reviewData.id
+    }).select().single();
+    if (!coachErr && coachData) {
+      state.coachingLog.push({ id: coachData.id, date, score, gm: hostLabel, type: logType, notes: noteText, coached: false, noCoaching: false, fromReview: true, reviewId: reviewData.id });
+    }
+  }
+
+  closeModal('review-modal');
+  renderReviews();
+}
+
+// ─── Modals ───────────────────────────────────────────────────────────────────
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  if(id==='review-modal') {
+    document.getElementById('rv-date').value=new Date().toISOString().split('T')[0];
+    document.getElementById('rv-host').value='';
+    document.getElementById('rv-staff-flag').checked=false;
+    document.getElementById('rv-text').value='';
+    document.getElementById('rv-score').value='';
+  }
+}
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => el.addEventListener('click', e=>{ if(e.target===el) el.classList.remove('open'); }));
+function fmtDate(d) { if(!d) return ''; const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
